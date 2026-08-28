@@ -3,6 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetchHostStatus: vi.fn(),
+  onConnected: vi.fn(
+    (
+      _listener: (event: {
+        reconnected: boolean;
+        disconnectedAt?: number;
+      }) => void,
+    ) =>
+      () => {},
+  ),
+  fetchSdkSystemConfig: vi.fn(async () => ({
+    hostDaemonPort: 38_887,
+    localHelperPorts: [38_887, 38_888],
+  })),
   fetchSystemConfig: vi.fn(async () => ({
     ok: true,
     json: async () => ({
@@ -27,14 +40,23 @@ vi.mock("./api-host-daemon", () => ({
   fetchWorkspaceOpenTargets: vi.fn(async () => []),
 }));
 
+vi.mock("./sdk", () => ({
+  sdk: {
+    system: {
+      config: mocks.fetchSdkSystemConfig,
+    },
+  },
+}));
+
 vi.mock("./bb-desktop", () => ({
   getBbDesktopInfo: () => null,
 }));
 
 vi.mock("./ws", () => ({
   wsManager: {
+    getConnectionState: () => "connected",
     onChanged: () => () => {},
-    onConnected: () => () => {},
+    onConnected: mocks.onConnected,
   },
 }));
 
@@ -44,9 +66,16 @@ import {
   localHostStatusAtom,
   requestLocalHostDaemonAccessAtom,
 } from "./system-config-atoms";
+import { appQueryClient } from "./app-query-client";
+import { sdk } from "./sdk";
+import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
 
 beforeEach(() => {
+  appQueryClient.clear();
   mocks.fetchHostStatus.mockReset();
+  mocks.onConnected.mockClear();
+  mocks.fetchSdkSystemConfig.mockClear();
+  mocks.fetchSystemConfig.mockClear();
   vi.stubGlobal("window", {
     location: {
       hostname: "remote.getbb.app",
@@ -62,11 +91,83 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  appQueryClient.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("local host daemon access atoms", () => {
+  it("shares the system config request with the app query owner", async () => {
+    const store = createStore();
+    const query = appQueryClient.fetchQuery({
+      queryKey: systemConfigQueryKey(),
+      queryFn: ({ signal }) => sdk.system.config({ signal }),
+      staleTime: 60_000,
+    });
+
+    await Promise.all([query, store.get(localHostDaemonAccessStateAtom)]);
+
+    expect(
+      mocks.fetchSdkSystemConfig.mock.calls.length +
+        mocks.fetchSystemConfig.mock.calls.length,
+    ).toBe(1);
+  });
+
+  it("does not restart status discovery on the initial server connection", async () => {
+    vi.stubGlobal("navigator", {
+      permissions: {
+        query: vi.fn(async () => ({ state: "granted" })),
+      },
+      userAgent: "test",
+    });
+    mocks.fetchHostStatus.mockResolvedValue({
+      connected: true,
+      hostId: "host-local",
+      serverUrl: "https://remote.getbb.app",
+    });
+    const store = createStore();
+    const unsubscribe = store.sub(localHostStatusAtom, () => {});
+
+    await expect(store.get(localHostStatusAtom)).resolves.toMatchObject({
+      hostId: "host-local",
+    });
+    for (const [listener] of mocks.onConnected.mock.calls) {
+      listener({ reconnected: false });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("refreshes status discovery after a server reconnection", async () => {
+    vi.stubGlobal("navigator", {
+      permissions: {
+        query: vi.fn(async () => ({ state: "granted" })),
+      },
+      userAgent: "test",
+    });
+    mocks.fetchHostStatus.mockResolvedValue({
+      connected: true,
+      hostId: "host-local",
+      serverUrl: "https://remote.getbb.app",
+    });
+    const store = createStore();
+    const unsubscribe = store.sub(localHostStatusAtom, () => {});
+
+    await expect(store.get(localHostStatusAtom)).resolves.toMatchObject({
+      hostId: "host-local",
+    });
+    for (const [listener] of mocks.onConnected.mock.calls) {
+      listener({ reconnected: true, disconnectedAt: Date.now() });
+    }
+
+    await vi.waitFor(() => {
+      expect(mocks.fetchHostStatus).toHaveBeenCalledTimes(4);
+    });
+    unsubscribe();
+  });
+
   it("does not probe loopback while a remote page is in prompt state", async () => {
     const store = createStore();
 

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { fetchPluginList, removePlugin } from "./plugin-settings-queries";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
+import { fetchFrontendCandidates } from "@/lib/plugin-frontend";
+import { pluginListQueryKey } from "./query-keys";
+import {
+  fetchInstalledPlugins,
+  fetchPluginList,
+  removePlugin,
+} from "./plugin-settings-queries";
 
 function fetchReturning(body: unknown, status = 200): typeof fetch {
   return async () =>
@@ -52,7 +59,41 @@ const ROW = {
   logoDarkUrl: null,
 };
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("fetchPluginList envelope", () => {
+  it("lets the frontend loader reuse the app plugin list", async () => {
+    const plugin = {
+      ...ROW,
+      app: {
+        hasApp: true,
+        bundle: {
+          jsUrl: "/api/v1/plugins/linear/assets/app.js?h=abc",
+          cssUrl: null,
+          jsBytes: 1_000,
+          hash: "abc",
+          sdkMajor: 0,
+          sdkVersion: "0.4.27",
+          compatible: true,
+        },
+      },
+    };
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      pluginListQueryKey(true),
+      await fetchInstalledPlugins(fetchReturning({ plugins: [plugin] })),
+    );
+    const networkFetch = vi.fn(fetchReturning({ plugins: [plugin] }));
+    vi.stubGlobal("fetch", networkFetch);
+
+    await expect(fetchFrontendCandidates(queryClient)).resolves.toEqual([
+      expect.objectContaining({ pluginId: "linear" }),
+    ]);
+    expect(networkFetch).not.toHaveBeenCalled();
+  });
+
   it("binds browser fetch before the SDK invokes it", async () => {
     const result = await fetchPluginList(
       receiverSensitiveFetch({ plugins: [ROW] }),

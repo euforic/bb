@@ -4,7 +4,8 @@ import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
-import { apiClient } from "./api-server";
+import { systemConfigQueryOptions } from "@/hooks/queries/system-queries";
+import { appQueryClient } from "./app-query-client";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
 import { getBbDesktopInfo } from "./bb-desktop";
 import {
@@ -78,15 +79,17 @@ function didLastSystemConfigLoadFail(): boolean {
   return lastSystemConfigLoadStatus === "failed";
 }
 
-async function loadSystemConfig(): Promise<SystemConfigResponse> {
+async function loadSystemConfig(
+  refresh: boolean,
+): Promise<SystemConfigResponse> {
   try {
-    const res = await apiClient.system.config.$get();
-    if (!res.ok) {
-      markSystemConfigLoadFailed();
-      return unavailableSystemConfig;
-    }
+    const options = systemConfigQueryOptions();
+    const config = await appQueryClient.fetchQuery({
+      ...options,
+      staleTime: refresh ? 0 : options.staleTime,
+    });
     markSystemConfigLoadSucceeded();
-    return (await res.json()) as SystemConfigResponse;
+    return config;
   } catch {
     markSystemConfigLoadFailed();
     return unavailableSystemConfig;
@@ -184,30 +187,11 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
 };
 
 const systemConfigAtom = atom(async (get) => {
-  get(systemConfigRefreshTickAtom);
-  return loadSystemConfig();
+  const refreshTick = get(systemConfigRefreshTickAtom);
+  return loadSystemConfig(refreshTick > 0);
 });
 
 const localHostStatusRefreshTickAtom = atom(0);
-localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
-  const refresh = () => {
-    setRefreshTick((count) => count + 1);
-  };
-
-  const unsubscribeConnected = wsManager.onConnected(() => {
-    refresh();
-  });
-  const unsubscribeChanged = wsManager.onChanged((message) => {
-    if (message.entity === "host") {
-      refresh();
-    }
-  });
-
-  return () => {
-    unsubscribeConnected();
-    unsubscribeChanged();
-  };
-};
 
 const localHostDaemonAccessRefreshTickAtom = atom(0);
 const localHostDaemonSessionAccessGrantedAtom = atom(false);

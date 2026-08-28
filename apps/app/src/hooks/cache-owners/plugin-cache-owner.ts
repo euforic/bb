@@ -1,9 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import {
-  toPluginListItem,
-  type PluginListResult,
-  type PluginSettingsView,
-} from "../queries/plugin-settings-queries";
+import { type PluginSettingsView } from "../queries/plugin-settings-queries";
 import type { InstalledPlugin } from "@bb/server-contract";
 import {
   allPluginCatalogSearchQueryKeyPrefix,
@@ -28,22 +24,19 @@ export function applyInstalledPlugin(args: {
   queryClient: QueryClient;
   plugin: InstalledPlugin;
 }): void {
-  const installed = toPluginListItem(args.plugin);
-  args.queryClient.setQueryData<PluginListResult>(
+  args.queryClient.setQueryData<InstalledPlugin[]>(
     pluginListQueryKey(true),
     (current) => {
-      const plugins = current?.plugins ?? [];
+      const plugins = current ?? [];
       const existingIndex = plugins.findIndex(
-        (candidate) => candidate.id === installed.id,
+        (candidate) => candidate.id === args.plugin.id,
       );
       if (existingIndex === -1) {
-        return { plugins: [...plugins, installed] };
+        return [...plugins, args.plugin];
       }
-      return {
-        plugins: plugins.map((candidate, index) =>
-          index === existingIndex ? installed : candidate,
-        ),
-      };
+      return plugins.map((candidate, index) =>
+        index === existingIndex ? args.plugin : candidate,
+      );
     },
   );
 }

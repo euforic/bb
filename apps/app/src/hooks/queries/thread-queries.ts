@@ -750,7 +750,9 @@ export function useThreadPendingInteractions(
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
     ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
-    staleTime: options?.staleTime,
+    ...(options?.staleTime === undefined
+      ? {}
+      : { staleTime: options.staleTime }),
   });
 }
 
