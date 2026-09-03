@@ -613,7 +613,13 @@ describe("acp bridge", () => {
   it("answers a minimal model/list (no params) with the synthetic default", async () => {
     const modelListId = sendRequest("model/list", {});
     expect((await waitForResponse(modelListId)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
+      models: [
+        {
+          id: "acp-default",
+          isDefault: true,
+          supportedServiceTiers: ["default"],
+        },
+      ],
       selectedOnlyModels: [],
     });
   });
@@ -647,6 +653,7 @@ describe("acp bridge", () => {
       models: {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
+        supportedServiceTiers: string[];
       }[];
     };
     expect(result.models.map((model) => model.id)).toEqual([
@@ -677,6 +684,7 @@ describe("acp bridge", () => {
           isDefault: true,
           defaultReasoningEffort: "medium",
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedServiceTiers: ["default"],
         },
         {
           id: "fake/strong",
@@ -714,6 +722,7 @@ describe("acp bridge", () => {
       models: {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
+        supportedServiceTiers: string[];
       }[];
       selectedOnlyModels: { id: string }[];
     };
@@ -726,6 +735,14 @@ describe("acp bridge", () => {
       },
     });
     expect.soft(result.models.map((model) => model.id)).toContain("grok-4.6");
+    expect(
+      result.models.find((model) => model.id === "default")
+        ?.supportedServiceTiers,
+    ).toEqual(["default"]);
+    expect(
+      result.models.find((model) => model.id === "grok-4.6")
+        ?.supportedServiceTiers,
+    ).toEqual(["default", "fast"]);
     expect(
       result.models
         .find((model) => model.id === "grok-4.6")
@@ -920,6 +937,7 @@ describe("acp bridge", () => {
           isDefault: false,
           defaultReasoningEffort: "medium",
           supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+          supportedServiceTiers: ["default"],
         },
       ],
       selectedOnlyModels: [],

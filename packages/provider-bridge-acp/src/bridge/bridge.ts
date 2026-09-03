@@ -129,6 +129,7 @@ import {
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
   findAcpThoughtLevelConfigOption,
+  supportsAcpFastMode,
   parseAgentModelLines,
   splitPrimaryModels,
   type AcpNativeReasoningSupport,
@@ -457,6 +458,7 @@ const ACP_DEFAULT_MODEL: AvailableModel = {
   description: "Model selection is managed by the connected ACP agent.",
   supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
   defaultReasoningEffort: "medium",
+  supportedServiceTiers: ["default"],
   isDefault: true,
 };
 
@@ -850,8 +852,20 @@ async function loadSessionDiscoveredModels(
 
     const modelOption = findAcpModelConfigOption(newSession.configOptions);
     const configOptionModels = buildModelCatalogFromConfigOptions(modelOption);
-    const sessionModels = buildModelCatalogFromSessionModels(newSession.models);
+    const supportsFast = supportsAcpFastMode(newSession.configOptions);
+    const sessionModels = buildModelCatalogFromSessionModels(
+      newSession.models,
+      supportsFast,
+    );
     if (configOptionModels.length === 0 && sessionModels.length === 0) {
+      if (supportsFast) {
+        return [
+          {
+            ...ACP_DEFAULT_MODEL,
+            supportedServiceTiers: ["default", "fast"],
+          },
+        ];
+      }
       return null;
     }
 
@@ -948,12 +962,16 @@ async function discoverAcpNativeReasoningByModel(args: {
             },
             resultSchema: acpConfigStateResultSchema,
           });
-          supportByModel.set(
-            model.value,
-            buildAcpNativeReasoningSupport(
+          supportByModel.set(model.value, {
+            ...buildAcpNativeReasoningSupport(
               findAcpThoughtLevelConfigOption(configState.configOptions),
             ),
-          );
+            supportedServiceTiers: supportsAcpFastMode(
+              configState.configOptions,
+            )
+              ? ["default", "fast"]
+              : ["default"],
+          });
         }
         return supportByModel;
       })(),

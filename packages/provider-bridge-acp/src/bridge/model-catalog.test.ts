@@ -5,11 +5,13 @@ import {
   buildAgentModelCatalog,
   buildAcpNativeReasoningSupport,
   buildModelCatalogFromConfigOptions,
+  buildModelCatalogFromSessionModels,
   acpNativeReasoningLevelToValue,
   findAcpModelConfigOption,
   findAcpThoughtLevelConfigOption,
   parseAgentModelLines,
   splitPrimaryModels,
+  supportsAcpFastMode,
 } from "./model-catalog.js";
 
 function catalogFromSample() {
@@ -21,6 +23,24 @@ function catalogFromSample() {
 }
 
 describe("acp model catalog", () => {
+  it("limits session-model Fast support to the current model", () => {
+    const models = buildModelCatalogFromSessionModels(
+      {
+        currentModelId: "model-a",
+        availableModels: [
+          { modelId: "model-a", name: "Model A" },
+          { modelId: "model-b", name: "Model B" },
+        ],
+      },
+      true,
+    );
+
+    expect(models.map((model) => model.supportedServiceTiers)).toEqual([
+      ["default", "fast"],
+      ["default"],
+    ]);
+  });
+
   it("parses id - name lines and skips chatter", () => {
     expect(parseAgentModelLines("header\n\na-1 - Model A\nnoise")).toEqual([
       { id: "a-1", displayName: "Model A" },
@@ -74,6 +94,7 @@ describe("acp model catalog", () => {
     expect(
       codex?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
     ).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(codex?.supportedServiceTiers).toEqual(["default"]);
   });
 
   it("keys a real Cursor list's Grok 4.6 family by its -medium variant (#1688)", () => {
@@ -137,12 +158,24 @@ describe("acp model catalog", () => {
       ),
     );
     expect(catalog?.models.map((m) => m.id)).toEqual(["composer-2.5"]);
+    expect(catalog?.models[0]?.supportedServiceTiers).toEqual([
+      "default",
+      "fast",
+    ]);
     expect(
       catalog?.resolveVariant({ model: "composer-2.5", serviceTier: "fast" }),
     ).toBe("composer-2.5-fast");
     expect(catalog?.resolveVariant({ model: "composer-2.5" })).toBe(
       "composer-2.5",
     );
+  });
+
+  it("does not expose a Fast toggle without distinct default variants", () => {
+    const catalog = buildAgentModelCatalog(
+      parseAgentModelLines("composer-2.5-fast - Composer 2.5 Fast"),
+    );
+
+    expect(catalog?.models[0]?.supportedServiceTiers).toEqual(["default"]);
   });
 
   it("maps the extra-high spelling onto xhigh and resolves it back exactly", () => {
@@ -331,6 +364,27 @@ describe("acp model catalog", () => {
 });
 
 describe("acp configOptions model catalog", () => {
+  it("recognizes only the native boolean Fast select contract", () => {
+    expect(
+      supportsAcpFastMode([
+        {
+          id: "fast",
+          type: "select",
+          options: [{ value: "false" }, { value: "true" }],
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      supportsAcpFastMode([
+        {
+          id: "fast-mode",
+          type: "select",
+          options: [{ value: "off" }, { value: "on" }],
+        },
+      ]),
+    ).toBe(false);
+  });
+
   it("finds the model select by category before falling back to id", () => {
     const byId = {
       id: "model",
@@ -396,6 +450,7 @@ describe("acp configOptions model catalog", () => {
         displayName: "OpenCode Zen/Big Pickle",
         isDefault: false,
         defaultReasoningEffort: "medium",
+        supportedServiceTiers: ["default"],
       },
       {
         id: "opencode/deepseek-v4-flash-free",
@@ -403,6 +458,7 @@ describe("acp configOptions model catalog", () => {
         displayName: "OpenCode Zen/DeepSeek V4 Flash Free",
         isDefault: true,
         defaultReasoningEffort: "high",
+        supportedServiceTiers: ["default"],
         supportedReasoningEfforts: [
           { reasoningEffort: "none" },
           { reasoningEffort: "low" },

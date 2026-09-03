@@ -18,6 +18,7 @@ export const ACP_NATIVE_REASONING_EFFORTS: AvailableModel["supportedReasoningEff
 export interface AcpNativeReasoningSupport {
   supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"];
   defaultReasoningEffort: ReasoningLevel;
+  supportedServiceTiers?: AvailableModel["supportedServiceTiers"];
 }
 
 interface AgentModelVariant extends RawAgentModel {
@@ -92,6 +93,18 @@ export function findAcpThoughtLevelConfigOption(
   return (configOptions ?? []).find(
     (option) => option.category === "thought_level",
   );
+}
+
+export function supportsAcpFastMode(
+  configOptions: readonly AcpConfigOption[] | undefined,
+): boolean {
+  const fastOption = (configOptions ?? []).find(
+    (option) => option.id === "fast" && option.type === "select",
+  );
+  const values = new Set(
+    (fastOption?.options ?? []).map((option) => option.value),
+  );
+  return values.has("true") && values.has("false");
 }
 
 const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
@@ -226,6 +239,7 @@ export function buildModelCatalogFromConfigOptions(
       description: "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
+      supportedServiceTiers: reasoning.supportedServiceTiers ?? ["default"],
       isDefault,
     };
   });
@@ -238,6 +252,7 @@ export function buildModelCatalogFromConfigOptions(
 
 export function buildModelCatalogFromSessionModels(
   sessionModels: AcpSessionModels | undefined,
+  supportsCurrentModelFast = false,
 ): AvailableModel[] {
   const availableModels = sessionModels?.availableModels ?? [];
   if (availableModels.length === 0) {
@@ -256,6 +271,10 @@ export function buildModelCatalogFromSessionModels(
       description: model.description ?? "",
       supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
       defaultReasoningEffort: "medium",
+      supportedServiceTiers:
+        supportsCurrentModelFast && isDefault
+          ? ["default", "fast"]
+          : ["default"],
       isDefault,
     };
   });
@@ -430,6 +449,12 @@ export function buildAgentModelCatalog(
         description: nameByLevel.get(level) ?? "",
       })),
       defaultReasoningEffort: defaultEntry.level,
+      supportedServiceTiers: levelsInLadderOrder.every((level) => {
+        const tier = byLevel.get(level);
+        return tier?.normal !== undefined && tier.fast !== undefined;
+      })
+        ? ["default", "fast"]
+        : ["default"],
       isDefault: models.length === 0,
     });
     variantsByFamilyId.set(defaultVariant.id, byLevel);

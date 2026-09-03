@@ -451,8 +451,6 @@ export function useThreadCreationOptions(
   const selectedProviderComposerActions =
     selectedProviderInfo?.composerActions ?? EMPTY_COMPOSER_ACTIONS;
 
-  const supportsServiceTier =
-    activeProviderCapabilities?.supportsServiceTier ?? false;
   const permissionModes: readonly PermissionMode[] =
     activeProviderCapabilities?.permissionModes ??
     DEFAULT_SUPPORTED_PERMISSION_MODES;
@@ -541,6 +539,9 @@ export function useThreadCreationOptions(
       selectedProviderInfo,
     ],
   );
+  const supportsServiceTier =
+    (activeProviderCapabilities?.supportsServiceTier ?? false) &&
+    (activeModel?.supportedServiceTiers?.includes("fast") ?? true);
   const serviceTier = useMemo(
     () => (supportsServiceTier ? rawServiceTier : undefined),
     [rawServiceTier, supportsServiceTier],

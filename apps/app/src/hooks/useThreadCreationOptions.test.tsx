@@ -298,6 +298,42 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("uses the selected model service-tier support when the provider is capable", async () => {
+    const response = executionOptionsResponse();
+    response.models[0] = {
+      ...response.models[0],
+      supportedServiceTiers: ["default"],
+    };
+    response.models[1] = {
+      ...response.models[1],
+      supportedServiceTiers: ["default", "fast"],
+    };
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(response);
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+          initialServiceTier: "fast",
+        }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-model");
+      expect(result.current.supportsServiceTier).toBe(false);
+      expect(result.current.serviceTier).toBeUndefined();
+    });
+
+    act(() => result.current.setSelectedModel("project-model"));
+
+    await waitFor(() => {
+      expect(result.current.supportsServiceTier).toBe(true);
+      expect(result.current.serviceTier).toBe("fast");
+    });
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(

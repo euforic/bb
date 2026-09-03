@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
@@ -107,10 +108,12 @@ function availableModel({
   value,
   label,
   isDefault = false,
+  supportedServiceTiers,
 }: {
   value: string;
   label: string;
   isDefault?: boolean;
+  supportedServiceTiers?: AvailableModel["supportedServiceTiers"];
 }): AvailableModel {
   return {
     id: value,
@@ -121,6 +124,7 @@ function availableModel({
       { reasoningEffort: "medium", description: "Medium" },
     ],
     defaultReasoningEffort: "medium",
+    supportedServiceTiers,
     isDefault,
   };
 }
@@ -159,6 +163,9 @@ function renderPicker({
   compact = false,
   splitPane = false,
   muted = false,
+  showFastModeToggle = false,
+  serviceTierSupportByProvider,
+  onProviderPreviewResolved,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -177,6 +184,14 @@ function renderPicker({
   compact?: boolean;
   splitPane?: boolean;
   muted?: boolean;
+  showFastModeToggle?: boolean;
+  serviceTierSupportByProvider?: Record<string, boolean>;
+  onProviderPreviewResolved?: (value: {
+    providerId: string;
+    model: string;
+    reasoningLevel: ReasoningLevel;
+    supportsServiceTier: boolean;
+  }) => void;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -203,6 +218,7 @@ function renderPicker({
         providerRouting={providerRouting}
         selectedProviderId={selectedProviderId}
         onSelectedProviderChange={onSelectedProviderChange ?? undefined}
+        onProviderPreviewResolved={onProviderPreviewResolved}
         hasMultipleProviders
         modelValue={modelValue}
         modelOptions={modelOptions}
@@ -215,7 +231,8 @@ function renderPicker({
         onReasoningChange={onReasoningChange}
         fastModeEnabled={false}
         onFastModeChange={vi.fn()}
-        showFastModeToggle={false}
+        showFastModeToggle={showFastModeToggle}
+        serviceTierSupportByProvider={serviceTierSupportByProvider}
         muted={muted}
         modal={false}
       />
@@ -250,6 +267,51 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("does not let provider-wide support override the selected model", () => {
+    renderPicker({
+      showFastModeToggle: false,
+      serviceTierSupportByProvider: { codex: true },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.queryByText("Fast mode")).toBeNull();
+  });
+
+  it("uses model-specific Fast support while previewing a provider", async () => {
+    const onProviderPreviewResolved = vi.fn();
+    renderPicker({
+      showFastModeToggle: true,
+      serviceTierSupportByProvider: { codex: true, "claude-code": true },
+      onProviderPreviewResolved,
+      alternateProviderModels: [
+        availableModel({
+          value: "claude-opus-4-7",
+          label: "Claude Opus 4.7",
+          isDefault: true,
+          supportedServiceTiers: ["default"],
+        }),
+      ],
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    expect(screen.getByText("Fast mode")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    await screen.findByText("Opus 4.7");
+    expect(screen.queryByText("Fast mode")).toBeNull();
+    await waitFor(() =>
+      expect(onProviderPreviewResolved).toHaveBeenCalledWith(
+        expect.objectContaining({ supportsServiceTier: false }),
+      ),
+    );
+  });
+
   it("uses the lower-emphasis chrome token for the composer caret", () => {
     renderPicker({ muted: true });
 

@@ -373,6 +373,10 @@ export function ModelReasoningPicker({
       reasoningValue,
     ],
   );
+  const previewSupportsServiceTier =
+    (serviceTierSupportByProvider?.[activeProviderId] ?? false) &&
+    (previewSelection?.activeModel?.supportedServiceTiers?.includes("fast") ??
+      true);
   const previewModelOptions = previewSelection?.modelOptions ?? modelOptions;
   const previewMoreModelOptions =
     previewSelection?.moreModelOptions ?? moreModelOptions;
@@ -384,14 +388,11 @@ export function ModelReasoningPicker({
     ) {
       return;
     }
-    const provider = previewQuery.data?.providers.find(
-      (candidate) => candidate.id === previewProviderId,
-    );
     onProviderPreviewResolved?.({
       providerId: previewProviderId,
       model: previewSelection.selectedModel,
       reasoningLevel: previewSelection.reasoningLevel,
-      supportsServiceTier: provider?.capabilities.supportsServiceTier ?? false,
+      supportsServiceTier: previewSupportsServiceTier,
     });
   }, [
     onProviderPreviewResolved,
@@ -399,6 +400,7 @@ export function ModelReasoningPicker({
     previewProviderId,
     previewQuery.data?.providers,
     previewSelection,
+    previewSupportsServiceTier,
   ]);
   const activeReasoningOptions = isPreviewing
     ? (previewSelection?.reasoningOptions ?? [])
@@ -491,9 +493,7 @@ export function ModelReasoningPicker({
 
   const effectiveShowFastModeToggle =
     hasActiveModelOptions &&
-    (serviceTierSupportByProvider
-      ? (serviceTierSupportByProvider[activeProviderId] ?? false)
-      : showFastModeToggle);
+    (isPreviewing ? previewSupportsServiceTier : showFastModeToggle);
   const effectiveFastModeLabel = isPreviewing
     ? fastServiceTierLabel(previewProvider)
     : (fastModeLabel ?? "Fast");
