@@ -29,6 +29,7 @@ import {
   findTimelineWindowBudgetFloorSequence,
   getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
+  getLatestCompletedThreadContextClearSequence,
   getThreadConversationOutlineRecord,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
@@ -623,6 +624,7 @@ function selectFullTimelineEventRows(
   thread: Thread,
   page: ThreadTimelinePageRequest,
   maxInlineOutputChars: InlineOutputCharLimit,
+  sequenceStart: number,
 ): TimelineEventRowSelection {
   return {
     byteWindowSequenceEnd: null,
@@ -637,6 +639,7 @@ function selectFullTimelineEventRows(
       threadId: thread.id,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       maxInlineOutputChars,
+      sequenceStart,
     }),
     strategy: "full",
   };
@@ -901,6 +904,7 @@ function ensureLatestTimelineHeadStateRows(
 interface ResolveTimelineSegmentWindowArgs {
   eventBudget: number;
   page: ThreadTimelinePageRequest;
+  sequenceStart: number;
   threadId: string;
 }
 
@@ -987,6 +991,7 @@ function applyTimelineWindowByteBudget(
 interface ResolveTimelineWindowBoundsArgs {
   anchors: readonly StandardTimelineSegmentAnchorRow[];
   budgetFloorSequence: number | undefined;
+  minimumSequenceStart: number;
   segmentLimit: number;
   threadId: string;
 }
@@ -1011,9 +1016,18 @@ function resolveTimelineWindowBounds(
   args: ResolveTimelineWindowBoundsArgs,
 ): Pick<
   ResolvedTimelineSegmentWindow,
-  "effectiveSegmentLimit" | "sequenceStart" | "sequenceWindowStart"
-> & { affordableAnchorCount: number } {
-  const { anchors, budgetFloorSequence, segmentLimit, threadId } = args;
+  | "effectiveSegmentLimit"
+  | "knownHasOlderSegments"
+  | "sequenceStart"
+  | "sequenceWindowStart"
+> {
+  const {
+    anchors,
+    budgetFloorSequence,
+    minimumSequenceStart,
+    segmentLimit,
+    threadId,
+  } = args;
   const affordable = countAffordableAnchors(
     anchors,
     budgetFloorSequence,
@@ -1036,8 +1050,8 @@ function resolveTimelineWindowBounds(
     })
   ) {
     return {
-      affordableAnchorCount: 0,
       effectiveSegmentLimit: segmentLimit,
+      knownHasOlderSegments: true,
       sequenceWindowStart: {
         kind: "event",
         sequenceStart: budgetFloorSequence,
@@ -1047,12 +1061,37 @@ function resolveTimelineWindowBounds(
     };
   }
 
+  if (budgetFloorSequence === undefined && anchors.length <= segmentLimit) {
+    return {
+      effectiveSegmentLimit: segmentLimit,
+      knownHasOlderSegments: null,
+      sequenceWindowStart: null,
+      sequenceStart: minimumSequenceStart,
+    };
+  }
+
   const segmentCount = Math.max(1, affordable);
+  const sequenceStart =
+    anchors[segmentCount - 1]?.sequence ?? minimumSequenceStart;
+  const budgetHasOlderRows =
+    budgetFloorSequence !== undefined &&
+    (budgetFloorSequence < sequenceStart ||
+      (budgetFloorSequence === sequenceStart &&
+        findTimelineWindowBudgetFloorSequence(db, {
+          beforeSequence: sequenceStart,
+          eventBudget: 0,
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          sequenceStart: minimumSequenceStart,
+          threadId,
+        }) !== undefined));
   return {
-    affordableAnchorCount: segmentCount,
     effectiveSegmentLimit: segmentCount,
+    knownHasOlderSegments:
+      sequenceStart === minimumSequenceStart
+        ? false
+        : anchors.length > segmentCount || budgetHasOlderRows,
     sequenceWindowStart: null,
-    sequenceStart: anchors[segmentCount - 1]?.sequence ?? 0,
+    sequenceStart,
   };
 }
 
@@ -1060,7 +1099,7 @@ function resolveTimelineSegmentWindow(
   db: DbConnection,
   args: ResolveTimelineSegmentWindowArgs,
 ): ResolvedTimelineSegmentWindow {
-  const { eventBudget, page, threadId } = args;
+  const { eventBudget, page, sequenceStart, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
     byteWindowSequenceStart: null,
@@ -1070,11 +1109,18 @@ function resolveTimelineSegmentWindow(
     sequenceWindowStart: null,
     knownHasOlderSegments: null,
     oversizedEventPlaceholder: null,
-    sequenceStart: 0,
+    sequenceStart,
   };
 
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
+    if (cursor.anchorSeq < sequenceStart) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Timeline pagination cursor is before the context boundary",
+      );
+    }
     const sequenceCursor = readSequenceCursor(cursor, threadId);
     if (sequenceCursor === null) {
       const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
@@ -1084,6 +1130,7 @@ function resolveTimelineSegmentWindow(
       if (!cursorAnchor || cursorAnchor.rowId !== cursor.anchorId) {
         const anyAnchor = listTimelineSegmentAnchorsDescending(db, {
           limit: 1,
+          sequenceStart,
           threadId,
         });
         if (anyAnchor.length === 0) {
@@ -1117,6 +1164,7 @@ function resolveTimelineSegmentWindow(
     const precedingAnchors = listTimelineSegmentAnchorsDescending(db, {
       beforeSequence: cursor.anchorSeq,
       limit: page.segmentLimit + 1,
+      sequenceStart,
       threadId,
     });
     const bounds = resolveTimelineWindowBounds(db, {
@@ -1125,8 +1173,10 @@ function resolveTimelineSegmentWindow(
         beforeSequence: cursor.anchorSeq,
         eventBudget,
         excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+        sequenceStart,
         threadId,
       }),
+      minimumSequenceStart: sequenceStart,
       segmentLimit: page.segmentLimit,
       threadId,
     });
@@ -1139,8 +1189,7 @@ function resolveTimelineSegmentWindow(
       effectiveSegmentLimit: bounds.effectiveSegmentLimit,
       hasAnchors: true,
       sequenceWindowStart: bounds.sequenceWindowStart,
-      knownHasOlderSegments:
-        precedingAnchors.length > bounds.affordableAnchorCount,
+      knownHasOlderSegments: bounds.knownHasOlderSegments,
       oversizedEventPlaceholder: null,
       sequenceStart: bounds.sequenceStart,
     };
@@ -1148,6 +1197,7 @@ function resolveTimelineSegmentWindow(
 
   const newestAnchors = listTimelineSegmentAnchorsDescending(db, {
     limit: page.segmentLimit + 1,
+    sequenceStart,
     threadId,
   });
   if (newestAnchors.length === 0) {
@@ -1158,8 +1208,10 @@ function resolveTimelineSegmentWindow(
     budgetFloorSequence: findTimelineWindowBudgetFloorSequence(db, {
       eventBudget,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+      sequenceStart,
       threadId,
     }),
+    minimumSequenceStart: sequenceStart,
     segmentLimit: page.segmentLimit,
     threadId,
   });
@@ -1170,7 +1222,7 @@ function resolveTimelineSegmentWindow(
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
     sequenceWindowStart: bounds.sequenceWindowStart,
-    knownHasOlderSegments: newestAnchors.length > bounds.affordableAnchorCount,
+    knownHasOlderSegments: bounds.knownHasOlderSegments,
     oversizedEventPlaceholder: null,
     sequenceStart: bounds.sequenceStart,
   };
@@ -1182,6 +1234,7 @@ function selectStandardTimelineEventRows(
   page: ThreadTimelinePageRequest,
   eventBudget: number,
   maxInlineOutputChars: InlineOutputCharLimit,
+  epochSequenceStart: number,
 ): TimelineEventRowSelection {
   const window = applyTimelineWindowByteBudget(db, {
     maxInlineOutputChars,
@@ -1189,6 +1242,7 @@ function selectStandardTimelineEventRows(
     window: resolveTimelineSegmentWindow(db, {
       eventBudget,
       page,
+      sequenceStart: epochSequenceStart,
       threadId: thread.id,
     }),
   });
@@ -1197,7 +1251,13 @@ function selectStandardTimelineEventRows(
     window.sequenceWindowStart === null &&
     window.byteWindowSequenceStart === null
   ) {
-    return selectFullTimelineEventRows(db, thread, page, maxInlineOutputChars);
+    return selectFullTimelineEventRows(
+      db,
+      thread,
+      page,
+      maxInlineOutputChars,
+      epochSequenceStart,
+    );
   }
 
   const beforeSequence = window.beforeSequence;
@@ -1290,7 +1350,9 @@ function selectStandardTimelineEventRows(
           },
     responsePageKind: page.kind,
     oversizedEventPlaceholder: window.oversizedEventPlaceholder,
-    rows: selectedRowsWithParentedTurnLifecycle,
+    rows: selectedRowsWithParentedTurnLifecycle.filter(
+      (row) => row.sequence >= epochSequenceStart,
+    ),
     strategy:
       sequenceStart === 0 && beforeSequence === undefined
         ? "full"
@@ -1425,6 +1487,10 @@ function buildThreadTimelineInternal(
   const includeNestedRows = options.includeNestedRows ?? false;
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
+  const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(db, {
+    atOrBeforeSequence: options.maxSeq,
+    threadId: thread.id,
+  });
   const eventSelection = measureThreadTimelineStage(
     profile,
     "event-query",
@@ -1435,6 +1501,7 @@ function buildThreadTimelineInternal(
         options.page,
         options.eventBudget,
         options.maxInlineOutputChars,
+        contextBoundarySeq ?? 0,
       ),
   );
   const rawEventRows = eventSelection.rows;
@@ -1473,6 +1540,7 @@ function buildThreadTimelineInternal(
     "context-window-query",
     () =>
       listContextWindowUsageRows(db, {
+        sequenceStart: contextBoundarySeq ?? 0,
         threadId: thread.id,
       }),
   );
@@ -1535,6 +1603,7 @@ function buildThreadTimelineInternal(
     "pagination-segmentation",
     () =>
       paginateTimelineRows({
+        contextBoundarySeq,
         sequenceWindowStart: eventSelection.sequenceWindowStart,
         knownHasOlderSegments: eventSelection.knownHasOlderSegments,
         page: eventSelection.paginationPage,
@@ -1549,6 +1618,7 @@ function buildThreadTimelineInternal(
   const response: ThreadTimelineResponse = {
     maxSeq: options.maxSeq,
     rows: options.summaryOnly ? [] : paginatedTimeline.rows,
+    contextBoundarySeq,
     activePromptMode:
       options.page.kind === "latest" ? timeline.activePromptMode : null,
     activeThinking:
@@ -1656,7 +1726,15 @@ export function buildThreadConversationOutline(
   options: BuildThreadConversationOutlineOptions,
 ): ThreadConversationOutlineResponse {
   return runEventLoopWorkSync(`conversation-outline ${thread.id}`, () => {
+    const contextBoundarySeq = getLatestCompletedThreadContextClearSequence(
+      db,
+      {
+        atOrBeforeSequence: options.maxSeq,
+        threadId: thread.id,
+      },
+    );
     const rawEventRows = listStoredConversationOutlineEventRows(db, {
+      sequenceStart: contextBoundarySeq ?? 0,
       threadId: thread.id,
     });
     const decodedRawEvents = rawEventRows.map((row) =>

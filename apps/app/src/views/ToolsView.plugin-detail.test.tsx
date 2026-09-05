@@ -26,7 +26,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { ToolsView } from "./ToolsView";
+import { PluginDetailPaneView, ToolsView } from "./ToolsView";
 import {
   CatalogPluginDetail,
   CatalogPluginDetailBanner,
@@ -38,35 +38,36 @@ import {
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { pluginSourceQueryKey } from "@/hooks/queries/query-keys";
 import type { PluginFrontendDiagnostic } from "@/lib/plugin-frontend";
+import {
+  makePluginListItem,
+  makePluginRegistrationSet,
+} from "@/test/fixtures/plugins";
 
-const GITHUB_PLUGIN = {
+vi.mock("react-resizable-panels", async () => {
+  const { createRequire } = await import("node:module");
+  const { dirname, join } = await import("node:path");
+  const require = createRequire(import.meta.url);
+  return require(
+    join(
+      dirname(require.resolve("react-resizable-panels/package.json")),
+      "dist/react-resizable-panels.browser.cjs.js",
+    ),
+  );
+});
+
+const GITHUB_PLUGIN = makePluginListItem({
   id: "github",
   source: "builtin:github",
   rootDir: "/Users/you/.bb/plugins/github",
-  version: "0.1.0",
-  enabled: true,
-  status: "running",
-  statusDetail: null,
   description: "Browse GitHub issues and pull requests in BB.",
   name: "GitHub",
   icon: "Github",
-  compactIconUrl: null,
-  logoUrl: null,
-  logoDarkUrl: null,
-  hasSettings: false,
-  handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-  services: [],
-  schedules: [],
-  cliCommand: null,
-  capabilities: [],
   app: { hasApp: true, bundle: null },
-  provenance: "catalog" as const,
-  isOrphanedBuiltin: false,
+  provenance: "catalog",
   catalogEntryId: "github",
   publisherLabel: "BB Official",
   sourceDisplay: "BB Official · GitHub",
-  updateState: EMPTY_PLUGIN_UPDATE_STATE,
-} satisfies PluginListItem;
+});
 
 const GITHUB_CATALOG_ENTRY = {
   entryId: "github",
@@ -95,14 +96,19 @@ const GITHUB_CATALOG_ENTRY = {
 
 function RoutedToolsView() {
   const location = useLocation();
-  const prefix = "/extensions/plugins/";
+  const isSettings = location.pathname.startsWith("/settings/plugins/");
+  const prefix = isSettings ? "/settings/plugins/" : "/extensions/plugins/";
   const pluginId = location.pathname.startsWith(prefix)
     ? decodeURIComponent(location.pathname.slice(prefix.length))
     : undefined;
   return (
     <>
       <TooltipProvider>
-        <ToolsView pluginId={pluginId} />
+        {isSettings && pluginId ? (
+          <PluginDetailPaneView pluginId={pluginId} />
+        ) : (
+          <ToolsView pluginId={pluginId} />
+        )}
       </TooltipProvider>
       <output data-testid="route-path">{location.pathname}</output>
       <output data-testid="route-search">{location.search}</output>
@@ -285,7 +291,6 @@ describe("PluginDetail official catalog lifecycle", () => {
       screen.queryByRole("button", { name: "Uninstall GitHub" }),
     ).toBeNull();
 
-    expect(screen.getByText("About")).toBeTruthy();
     expect(screen.getByText("Release")).toBeTruthy();
     expect(
       screen.getByText("Browse GitHub issues and pull requests in BB."),
@@ -682,6 +687,11 @@ describe("BB Official plugin detail routing", () => {
     const card = await screen.findByRole("button", {
       name: "Open GitHub details",
     });
+    const panels = Array.from(document.querySelectorAll("[data-panel]"));
+    expect(panels).toHaveLength(2);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    const search = screen.getByRole("textbox", { name: "Search plugins" });
     card.focus();
     fireEvent.click(card);
     expect(
@@ -691,6 +701,8 @@ describe("BB Official plugin detail routing", () => {
       screen.getByRole("textbox", { name: "Search plugins" }),
     ).toBeTruthy();
     expect(screen.getAllByRole("button", { name: /^Close /u })).toHaveLength(1);
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
 
     fireEvent.click(screen.getByRole("button", { name: "Close GitHub" }));
     await waitFor(() => {
@@ -699,6 +711,10 @@ describe("BB Official plugin detail routing", () => {
       );
       expect(document.activeElement).toBe(card);
     });
+    expect(Array.from(document.querySelectorAll("[data-panel]"))).toEqual(panels);
+    expect(panels[0]?.getAttribute("data-panel-size")).toBe("100.0");
+    expect(panels[1]?.getAttribute("data-panel-size")).toBe("0.0");
+    expect(screen.getByRole("textbox", { name: "Search plugins" })).toBe(search);
   });
 
   it("keeps related plugin navigation in the full-page detail", async () => {
@@ -760,6 +776,7 @@ describe("BB Official plugin detail routing", () => {
       >
         <Routes>
           <Route path="/extensions/plugins/*" element={<RoutedToolsView />} />
+          <Route path="/settings/plugins/*" element={<RoutedToolsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
@@ -772,7 +789,7 @@ describe("BB Official plugin detail routing", () => {
     );
     await waitFor(() => {
       expect(screen.getByTestId("route-path").textContent).toBe(
-        "/extensions/plugins/automations",
+        "/settings/plugins/automations",
       );
     });
     expect(screen.getByTestId("route-search").textContent).toBe(
@@ -1313,37 +1330,38 @@ describe("PluginDetail runtime health", () => {
 describe("PluginDetail capability inventory", () => {
   it("lists each contributed capability and keeps health separate", async () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("capability-demo", {
-      homepageSections: [],
-      settingsSections: [
-        {
-          id: "preferences",
-          title: "Advanced preferences",
-          component: EmptySlot,
-        },
-      ],
-      navPanels: [
-        {
-          id: "run-monitor",
-          title: "Run monitor",
-          icon: "Workflow",
-          path: "runs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [],
-      composerCustomizations: [
-        {
-          id: "prompt-tools",
-          actions: [{ id: "enhance-prompt", component: EmptySlot }],
-        },
-      ],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [],
-      messageDirectives: [],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "capability-demo",
+      makePluginRegistrationSet({
+        settingsSections: [
+          {
+            id: "preferences",
+            title: "Advanced preferences",
+            component: EmptySlot,
+          },
+        ],
+        navPanels: [
+          {
+            id: "run-monitor",
+            title: "Run monitor",
+            icon: "Workflow",
+            path: "runs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [],
+        composerCustomizations: [
+          {
+            id: "prompt-tools",
+            actions: [{ id: "enhance-prompt", component: EmptySlot }],
+          },
+        ],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+        messageDirectives: [],
+      }),
+    );
 
     const plugin = {
       ...GITHUB_PLUGIN,
@@ -1549,40 +1567,40 @@ describe("PluginDetail capability inventory", () => {
 
   it("names repeated product-titled surfaces by their actual capability", () => {
     const EmptySlot = () => null;
-    setPluginSlotRegistrations("simple-notes", {
-      homepageSections: [],
-      settingsSections: [],
-      navPanels: [
-        {
-          id: "docs",
-          title: "Docs",
-          icon: "FileText",
-          path: "docs",
-          component: EmptySlot,
-        },
-      ],
-      threadPanelActions: [
-        {
-          id: "document",
-          title: "Document",
-          icon: "FileText",
-          component: EmptySlot,
-        },
-      ],
-      composerCustomizations: [],
-      pendingInteractions: [],
-      sidebarFooterActions: [],
-      fileOpeners: [
-        {
-          id: "docs",
-          title: "Markdown",
-          extensions: ["md", "mdx", "markdown"],
-          component: EmptySlot,
-        },
-      ],
-      messageDirectives: [{ id: "docs", component: EmptySlot }],
-      messageActions: [],
-    });
+    setPluginSlotRegistrations(
+      "simple-notes",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: EmptySlot,
+          },
+        ],
+        threadPanelActions: [
+          {
+            id: "document",
+            title: "Document",
+            icon: "FileText",
+            component: EmptySlot,
+          },
+        ],
+        composerCustomizations: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [
+          {
+            id: "docs",
+            title: "Markdown",
+            extensions: ["md", "mdx", "markdown"],
+            component: EmptySlot,
+          },
+        ],
+        messageDirectives: [{ id: "docs", component: EmptySlot }],
+      }),
+    );
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>

@@ -51,6 +51,7 @@ import {
 } from "../../services/threads/thread-send.js";
 import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
+import { clearThreadContext } from "../../services/threads/thread-context-clear.js";
 import {
   buildExecutionOptions,
   dispatchThreadUnarchiveCommand,
@@ -378,6 +379,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
+  post(routes.clearContext, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    await clearThreadContext(deps, { environment, thread });
+    return context.json({ ok: true });
+  });
+
   post(routes.cancelPlan, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const activity = getThreadPromptBannerActivity(deps, thread);
@@ -574,7 +582,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
     unarchiveThread(deps.db, deps.hub, thread.id);
-    const environment = thread.environmentId
+    let environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)
       : null;
     if (environment?.status === "retiring") {
@@ -582,6 +590,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         environmentId: environment.id,
         event: { type: "retire.cancelled" },
       });
+      environment = getEnvironment(deps.db, environment.id);
     }
     if (providerThreadId && environment) {
       dispatchThreadUnarchiveCommand(deps, {

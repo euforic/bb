@@ -44,6 +44,12 @@ import type {
   PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
+  ExperimentalPluginProviderEnvContext,
+  ExperimentalPluginProviderEnvEntry,
+  ExperimentalPluginProviderEnvHealth,
+  ExperimentalPluginProviderEnvHealthContext,
+  ExperimentalPluginWebSocket,
+  ExperimentalPluginWebSocketHandler,
   PluginProviders,
   PluginRealtime,
   PluginRpc,
@@ -159,6 +165,14 @@ export interface PluginHttpRouteRecord {
   handler: PluginHttpHandler;
 }
 
+export interface PluginWebSocketRouteRecord {
+  path: string;
+  auth: PluginHttpAuthMode;
+  handler: ExperimentalPluginWebSocketHandler;
+  active: boolean;
+  sockets: Set<ExperimentalPluginWebSocket>;
+}
+
 export interface PluginRpcHandler {
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
@@ -233,6 +247,7 @@ export interface PluginApiHandle {
   hooks: PluginHookRecords;
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
+  websocketRoutes: PluginWebSocketRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
   hostWorkerExitHandlers: PluginHostWorkerExitHandler[];
   hostSignalHandlers: PluginHostSignalHandler[];
@@ -241,10 +256,16 @@ export interface PluginApiHandle {
   cli: { registration: PluginCliRegistrationRecord | null };
   agentTools: PluginAgentToolRecord[];
   listProviderDeclarations(): NormalizedPluginProviderDeclaration[];
+  providerEnvResolvers: ReadonlyMap<string, PluginProviderEnvResolver>;
+  providerEnvHealthResolvers: ReadonlyMap<
+    string,
+    PluginProviderEnvHealthResolver
+  >;
   agentConfigurationProvider: PluginAgentConfigurationProvider | null;
   instructionProvider: PluginInstructionProvider | null;
   mentionProviders: PluginMentionProviderRecord[];
   activate(): void;
+  closeWebSockets(): void;
   invalidate(): void;
 }
 
@@ -269,6 +290,19 @@ type PluginInstructionProvider = (ctx: {
 type PluginAgentConfigurationProvider = (
   context: PluginAgentConfigurationContext,
 ) => PluginAgentConfiguration;
+
+export type PluginProviderEnvResolver = (
+  context: ExperimentalPluginProviderEnvContext,
+) =>
+  | readonly ExperimentalPluginProviderEnvEntry[]
+  | Promise<readonly ExperimentalPluginProviderEnvEntry[]>;
+
+export type PluginProviderEnvHealthResolver = (
+  context: ExperimentalPluginProviderEnvHealthContext,
+) =>
+  | ExperimentalPluginProviderEnvHealth
+  | null
+  | Promise<ExperimentalPluginProviderEnvHealth | null>;
 
 function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
   return {
@@ -501,6 +535,7 @@ export function createPluginApi(options: {
     "message.dispatch": null,
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
+  const websocketRoutes: PluginWebSocketRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
   const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
   const hostSignalHandlers: PluginHostSignalHandler[] = [];
@@ -799,6 +834,35 @@ export function createPluginApi(options: {
       }
       httpRoutes.push({ method: normalizedMethod, path, auth, handler });
     },
+    experimental_websocket(path, handler, opts) {
+      assertLive();
+      if (typeof path !== "string" || !path.startsWith("/")) {
+        throw new Error(
+          `websocket route path must be a string starting with "/", got ${JSON.stringify(path)}`,
+        );
+      }
+      if (typeof handler !== "function") {
+        throw new Error(
+          `websocket route handler for ${path} must be a function`,
+        );
+      }
+      const auth = opts?.auth ?? "local";
+      if (auth !== "local" && auth !== "token" && auth !== "none") {
+        throw new Error(
+          `invalid auth mode "${String(auth)}" for websocket ${path} — use "local", "token", or "none"`,
+        );
+      }
+      if (websocketRoutes.some((route) => route.path === path)) {
+        throw new Error(`websocket route ${path} is already registered`);
+      }
+      websocketRoutes.push({
+        path,
+        auth,
+        handler,
+        active: true,
+        sockets: new Set(),
+      });
+    },
   };
 
   const rpc: PluginRpc = {
@@ -950,6 +1014,11 @@ export function createPluginApi(options: {
     isActivated: () => activated,
     disposeHooks,
   });
+  const providerEnvResolvers = new Map<string, PluginProviderEnvResolver>();
+  const providerEnvHealthResolvers = new Map<
+    string,
+    PluginProviderEnvHealthResolver
+  >();
   let agentConfigurationProvider: PluginAgentConfigurationProvider | null =
     null;
   let instructionProvider: PluginInstructionProvider | null = null;
@@ -1382,6 +1451,44 @@ export function createPluginApi(options: {
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
+    experimental_contributeEnv(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment contribution requires a provider id",
+        );
+      }
+      if (providerEnvResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment contribution requires a resolver function",
+        );
+      }
+      providerEnvResolvers.set(providerId, resolve);
+    },
+    experimental_contributeEnvHealth(providerId, resolve) {
+      assertLive();
+      if (typeof providerId !== "string" || providerId.trim().length === 0) {
+        throw new Error(
+          "provider environment health contribution requires a provider id",
+        );
+      }
+      if (providerEnvHealthResolvers.has(providerId)) {
+        throw new Error(
+          `provider environment health contribution for "${providerId}" is already registered`,
+        );
+      }
+      if (typeof resolve !== "function") {
+        throw new Error(
+          "provider environment health contribution requires a resolver function",
+        );
+      }
+      providerEnvHealthResolvers.set(providerId, resolve);
+    },
   };
 
   const aiServiceRegistrations = createStagedRegistrations({
@@ -1443,6 +1550,7 @@ export function createPluginApi(options: {
     threadEventHandlers,
     hooks,
     httpRoutes,
+    websocketRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,
     hostSignalHandlers,
@@ -1451,6 +1559,8 @@ export function createPluginApi(options: {
     cli: cliRecord,
     agentTools,
     listProviderDeclarations: providerRegistrations.values,
+    providerEnvResolvers,
+    providerEnvHealthResolvers,
     get agentConfigurationProvider() {
       return agentConfigurationProvider;
     },
@@ -1479,6 +1589,21 @@ export function createPluginApi(options: {
       if (pendingNeedsConfiguration !== null) {
         reportNeedsConfiguration(pendingNeedsConfiguration);
         pendingNeedsConfiguration = null;
+      }
+    },
+    closeWebSockets() {
+      for (const route of websocketRoutes) {
+        route.active = false;
+        for (const socket of route.sockets) {
+          try {
+            socket.close(1012, "Plugin reloaded or disabled");
+          } catch (error) {
+            emitLog(
+              "warn",
+              `websocket ${route.path} close failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
       }
     },
     invalidate() {

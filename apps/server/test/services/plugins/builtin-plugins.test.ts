@@ -223,6 +223,7 @@ describe("builtin plugin reconciliation", () => {
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
     const expectedIcons = new Map([
+      ["account-pool", "Layers"],
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Clock"],
       ["concurrency-limit", "Limitation"],
@@ -239,6 +240,7 @@ describe("builtin plugin reconciliation", () => {
       ["provider-codex", "./icons/codex.svg"],
       ["provider-pi", "./icons/pi.svg"],
       ["provider-retry", "ArrowReloadHorizontal"],
+      ["provider-usage", "ChartColumn"],
       ["push-notifications", "BellDot"],
       ["scheduled-send", "Calendar"],
       ["secrets", "Lock"],
@@ -520,6 +522,31 @@ describe("builtin plugin reconciliation", () => {
       {
         id: "workflows",
         source: "builtin:workflows",
+        enabled: false,
+        status: "disabled",
+      },
+    ]);
+  });
+
+  it("ships Provider usage disabled on a fresh database", async () => {
+    const providerUsage = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "provider-usage",
+    );
+    expect(providerUsage?.defaultEnabled).toBe(false);
+
+    service = createService({
+      db,
+      dataDir: join(workDir, "data"),
+      builtinName: "provider-usage",
+      defaultEnabled: providerUsage?.defaultEnabled,
+      rootDir: resolveBuiltinPluginRootPath("provider-usage"),
+    });
+    await service.start();
+
+    expect(service.list()).toMatchObject([
+      {
+        id: "provider-usage",
+        source: "builtin:provider-usage",
         enabled: false,
         status: "disabled",
       },

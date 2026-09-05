@@ -24,6 +24,11 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "account-pool",
+    pluginId: "account-pool",
+    defaultEnabled: false,
+  },
+  {
     name: "ask-user-question",
     pluginId: "ask-user-question",
     defaultEnabled: false,
@@ -77,6 +82,11 @@ export const BUILTIN_PLUGINS = [
     name: "provider-pi",
     pluginId: "provider-pi",
     defaultEnabled: true,
+  },
+  {
+    name: "provider-usage",
+    pluginId: "provider-usage",
+    defaultEnabled: false,
   },
   {
     name: "provider-acp",

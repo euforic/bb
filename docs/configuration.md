@@ -134,19 +134,19 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## Common Keys
 
-| Key                     | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                              |
-| ----------------------- | -------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                            |
-| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                     |
-| `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                    |
-| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                               |
-| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change.                         |
-| `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                        |
-| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                               |
-| `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                          |
-| `BB_HOST_DAEMON_PORT`   | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                  |
-| `BB_LOG_LEVEL`          | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                 |
-| `OPENAI_API_KEY`        | `bb-app env`                                       | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                                                                                                                                                                                                                                                                                 |
+| Key                     | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
+| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                              |
+| `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                             |
+| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                                        |
+| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
+| `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
+| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
+| `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                                   |
+| `BB_HOST_DAEMON_PORT`   | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                           |
+| `BB_LOG_LEVEL`          | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                          |
+| `OPENAI_API_KEY`        | `bb-app env`                                       | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                                                                                                                                                                                                                                                                                          |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
@@ -168,7 +168,14 @@ server-side transcription model.
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
 The default is `https://exp.host/--/api/v2/push/send`. Change it with
 `bb plugin config push-notifications set expoPushUrl <url>`. The plugin reads
-the value when it sends a message.
+the value when it sends a message. Independent `mobileEnabled`, `webEnabled`,
+and `desktopEnabled` booleans default to true. Change each with
+`bb plugin config push-notifications set webEnabled false` (or the other
+channel key). Web and desktop clients receive system notifications while a bb
+tab or window remains open; browsers require HTTPS or localhost and per-device
+notification permission. Settings → Push notifications offers permission and
+test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
+connected, permitted clients; it does not confirm OS display.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -256,6 +263,14 @@ after 30 seconds while keeping its bb thread resumable; it defaults off during
 its bake period and applies on the next start, resume, or turn command. Read and
 set provider options like any plugin setting, for example
 `bb plugin config provider-claude-code set idleQueryReleaseEnabled true`.
+
+Claude Code starts without its Claude in Chrome browser tools when bb runs it,
+even when the interactive `claude` CLI has Chrome enabled by default. Turn the
+tools on for bb threads with
+`bb plugin config provider-claude-code set chromeEnabled true`. bb then starts
+Claude Code with `--chrome`. The host needs the Claude in Chrome extension and a
+claude.ai login; API-key sessions keep Chrome off. A change restarts the thread's
+Claude process before its next turn and keeps the conversation.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
@@ -603,6 +618,97 @@ how many connected clients received the broadcast. `spotlight` focuses the
 target pane and persistently dims the others; `clear-spotlight` focuses it and
 persistently restores undimmed splits.
 
+## Account Pooler [Experimental]
+
+The builtin Account Pooler plugin is disabled on fresh installations. It stores
+non-secret Claude and Codex account metadata in plugin KV, quota observations
+in the plugin SQLite database, and each account token plus per-machine hub
+tokens in 0600 files under
+`<data-dir>/plugins/account-pool/secrets/accounts/`.
+Enable it and add at least one account:
+
+```sh
+bb plugin enable account-pool
+bb pool account add --provider claude --login
+printf '%s\n' "$CLAUDE_AUTH_CODE" | bb pool account login-complete --session <id> --code-stdin
+bb pool account add --provider codex --login
+bb pool account login-poll --session <id>
+bb pool account add --provider claude --import
+bb pool account add --provider codex --import
+printf '%s\n' "$ANTHROPIC_API_KEY" | bb pool account add --provider claude --api-key-stdin [--label <text>] [--priority <n>]
+```
+
+The Claude login start command creates a ten-minute in-memory PKCE session,
+prints a browser authorization URL and session ID, then exits. After sign-in,
+pipe the code shown on Anthropic's manual callback page to
+`account login-complete` with that session ID. The browser can be on a different
+machine from the bb server, and the code stays out of process arguments. The
+Codex login command prints a ChatGPT device verification URL, one-time code,
+session ID, and an `account login-poll` command that waits until authorization
+completes or expires. The Account Pooler plugin settings page exposes both flows
+with **Sign in to Claude** and **Sign in to Codex**, plus Claude import,
+API-key, enable/disable, and removal controls.
+
+The CLI import paths read the Claude Code or Codex login on the bb server host.
+`--api-key-stdin` reads exactly one non-empty key from piped standard input and
+is the default API-key path for agents. The compatibility form `--api-key
+<key>` remains available, but exposes the secret in process arguments, shell
+history, and agent transcripts. The hub starts immediately, so a newly added
+or enabled account is available without a plugin reload.
+
+When the plugin has an enabled account whose secret file is readable and
+valid, it automatically contributes the provider's hub route and a
+machine-specific secret token to Claude Code or Codex sessions on every host.
+Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
+Codex receives `CODEX_OPENAI_BASE_URL` and the secret
+`CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
+without writing to `~/.codex/config.toml`.
+Claude Code disables tool search behind a custom base URL by default; the hub
+forwards `tool_reference` blocks unchanged, so the override keeps it on.
+Tokens are never printed
+by the CLI. Plugin startup and `bb pool status` remove token files for machines
+that are no longer enrolled. Status lists token mint and last-use timestamps
+plus recently routed threads whose machines do not have a usable local Claude
+login. Rotate one machine's token with
+`bb pool token rotate --machine <id-or-name>`; the prior token remains valid
+for ten minutes so in-flight requests can drain. Bypass or restore routing for
+one thread with `bb pool bypass <thread-id>` or
+`bb pool bypass <thread-id> --off`. Account listing, enable, disable, and
+removal are available through `bb pool account list|enable|disable|remove`.
+Provider routing is independently persisted and defaults on. Use
+`bb pool routing <claude|codex> --off` to stop contributing pool environment
+and health for one provider, and omit `--off` to enable it again.
+OAuth accounts refresh quota from Anthropic's usage endpoint when added or
+enabled and every five minutes while idle. `account list` adds columns for the
+family buckets Anthropic reports; JSON status exposes their utilization,
+reset, status, observation time, and `header` or `usage` source under
+`familyWeekly`. Requests route around an account spent for their model family
+without disabling that account for other families. Imported and newly signed-in
+accounts retain their Anthropic account UUID, and the hub aligns a present
+`metadata.user_id` account component with the selected account.
+
+Three plugin-owned configuration values control routing. `switchThreshold` is
+the shared or requested model-family quota fraction at which an account stops
+receiving matching traffic and defaults to `0.98`.
+`anthropicUpstreamBaseUrl` defaults to `https://api.anthropic.com` and
+`codexUpstreamBaseUrl` defaults to
+`https://chatgpt.com/backend-api/codex`. Codex uses the hub's HTTP Responses
+and models routes and prefers its WebSocket Responses route; the hub keeps the
+downstream WebSocket session semantics while forwarding upstream over HTTPS
+SSE. Both URL values exist only for tests and QA with a controlled fake
+upstream. Inspect or update the full plugin KV-backed configuration with:
+
+```sh
+bb pool config
+bb pool config set switchThreshold 0.98
+bb pool config set anthropicUpstreamBaseUrl http://127.0.0.1:9000
+bb pool config set codexUpstreamBaseUrl http://127.0.0.1:9001
+```
+
+Upgrading from an Account Pooler build that stored these values through
+`bb.settings` resets the threshold and both QA-only upstream overrides to
+their defaults. Those old values are not migrated.
+
 ## bb connect
 
 `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
@@ -687,6 +793,13 @@ is off by default while the app is in early access.
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
+
+The `sidebarProgressiveDisclosure` experiment is off by default. In **By
+project** and **By machine**, it shows the first five groups in the current sort
+order, keeps attention groups visible, and reveals ten more per **Show more**
+click. Revealed groups stay visible through activity and sort-order changes.
+**Manually** is unchanged. Toggle it with `bb settings experiment
+sidebarProgressiveDisclosure <true|false>`.
 
 The `timelineWindowing` experiment is off by default. When enabled, long
 timelines and large expanded timeline details retain stable height-preserving

@@ -229,11 +229,10 @@ export type ThreadSpawnArgs = ThreadSpawnBaseArgs &
 
 export interface ThreadForkArgs extends Omit<
   ForkThreadRequest,
-  "origin" | "visibility" | "workspace"
+  "origin" | "visibility"
 > {
   origin?: ForkThreadRequest["origin"];
   visibility?: ForkThreadRequest["visibility"];
-  workspace?: ForkThreadRequest["workspace"];
 }
 
 export interface ThreadUpdateArgs extends UpdateThreadRequest {
@@ -530,6 +529,7 @@ export interface ThreadsArea {
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
+  clearContext(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
     args: ThreadStatusArgs,
@@ -700,7 +700,6 @@ function forkJson(args: ThreadForkArgs): ForkThreadRequest {
     ...args,
     origin: args.origin ?? "sdk",
     visibility: args.visibility ?? "visible",
-    workspace: args.workspace ?? "isolated",
   };
 }
 
@@ -1247,6 +1246,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async compact(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].compact.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async clearContext(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].context.clear.$post({
           param: { id: input.threadId },
         }),
       );
