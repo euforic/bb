@@ -606,6 +606,56 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     });
   });
 
+  it.each([
+    { input: "/workspace/repo", expected: "/workspace/repo" },
+    { input: "project", expected: "/workspace/project" },
+    { input: "/workspace/with space ", expected: "/workspace/with space " },
+    { input: "", expected: SESSION_CWD },
+    { input: "   ", expected: SESSION_CWD },
+    { input: 42, expected: SESSION_CWD },
+    { input: undefined, expected: SESSION_CWD },
+  ])(
+    "preserves command cwd through completion: $input",
+    ({ input, expected }) => {
+      const harness = startedHarness();
+      const started = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "guest-command",
+          kind: "execute",
+          status: "in_progress",
+          rawInput: { command: "pwd", cwd: input },
+        }),
+      );
+      expect(started).toContainEqual(
+        expect.objectContaining({
+          type: "item/started",
+          item: expect.objectContaining({
+            type: "commandExecution",
+            cwd: expected,
+          }),
+        }),
+      );
+      const completed = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "guest-command",
+          status: "completed",
+          rawOutput: { stdout: expected, exit_code: 0 },
+        }),
+      );
+      expect(completed).toContainEqual(
+        expect.objectContaining({
+          type: "item/completed",
+          item: expect.objectContaining({
+            type: "commandExecution",
+            cwd: expected,
+          }),
+        }),
+      );
+    },
+  );
+
   it("translates execute tool calls into command executions", () => {
     const harness = startedHarness();
     const turnId = harness.openTurnId();

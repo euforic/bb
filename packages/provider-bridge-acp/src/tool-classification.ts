@@ -39,6 +39,9 @@ export interface AcpInjectedTool {
 }
 
 const BB_TOOL_SERVER = "bb";
+const commandCwdSchema = z.object({
+  cwd: z.string().refine((value) => value.trim().length > 0),
+});
 
 export function isInjectedToolCandidate(
   event: AcpToolCallUpdateEvent,
@@ -491,7 +494,10 @@ export function classifyAcpToolCall(
   }
   const operation = classifyAcpToolCallOperation(event, options);
   if (operation.kind === "command") {
-    const cwd = toOptionalString(options?.cwd);
+    const input = commandCwdSchema.safeParse(event.rawInput);
+    const cwd = input.success
+      ? resolveAcpToolCallPath(input.data.cwd, options)
+      : toOptionalString(options?.cwd);
     if (cwd !== undefined) {
       return {
         item: { type: "command", command: operation.command, cwd },
